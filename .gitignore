@@ -45,3 +45,37 @@ temp/
 
 # Local data files
 data/
+
+# ---------------------------
+# Node.js
+# ---------------------------
+node_modules/
+npm-debug.log*
+yarn-error.log*
+*.log
+
+# ---------------------------
+# Environment Variables
+# ---------------------------
+.env
+.env.local
+
+# ---------------------------
+# OS / IDE Files
+# ---------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+*.code-workspace
+
+# ---------------------------
+# Sarvam AI (if SDK creates cache)
+# ---------------------------
+.sarvam/
+
+# ---------------------------
+# Temporary Files
+# ---------------------------
+*.tmp
+*.temp
+*.bak
