@@ -1,9 +1,7 @@
 // ================================
 // CONFIG
 // ================================
-const BACKEND_URL = "https://localhost:5000"; // your backend URL here
-// NOTE: Forecast still uses OpenWeather directly.
-// Move forecast to backend later if you want to hide API key.
+const BACKEND_URL = "http://localhost:5000"; // Backend URL
 
 let tempChart = null;
 
@@ -56,89 +54,125 @@ function injectCropSelector() {
 
   form.appendChild(cropDiv);
 }
-injectCropSelector();
+
+// Initialize on page load
+document.addEventListener("DOMContentLoaded", () => {
+  injectCropSelector();
+});
 
 /* -----------------------
    Form Submit
    ----------------------- */
-document.getElementById("searchForm").addEventListener("submit", async (e) => {
+document.getElementById("searchForm")?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const city = document.getElementById("cityInput").value.trim();
   if (city) await fetchWeather(city);
 });
 
 /* -----------------------
-   Fetch Weather (Backend)
+   Fetch Weather (Backend + Forecast)
    ----------------------- */
 async function fetchWeather(cityOrPin) {
   const loadingSpinner = document.getElementById("loadingSpinner");
   const weatherInfo = document.getElementById("weatherInfo");
-  const infoCards = document.getElementById("infoCards");
   const errorMessage = document.getElementById("errorMessage");
+  const errorText = document.getElementById("errorText");
 
+  // Show loading
   loadingSpinner.classList.remove("hidden");
   weatherInfo.classList.add("hidden");
-  if (infoCards) infoCards.classList.add("hidden");
   errorMessage.classList.add("hidden");
 
   try {
-    // --- Current weather through your backend ---
+    console.log(`🔍 Fetching weather for: ${cityOrPin}`);
+
+    // --- 1. Current weather from YOUR backend ---
     const currentRes = await fetch(
       `${BACKEND_URL}/api/weather/${encodeURIComponent(cityOrPin)}`
     );
-    if (!currentRes.ok) throw new Error("Location not found");
-    const currentData = await currentRes.json();
 
-    // --- Forecast (still OpenWeather direct call for now) ---
-    let query;
-    if (/^\d{6}$/.test(cityOrPin)) {
-      query = `zip=${cityOrPin},in`;
-    } else {
-      query = `q=${encodeURIComponent(cityOrPin)}`;
+    if (!currentRes.ok) {
+      const errorData = await currentRes.json();
+      throw new Error(errorData.message || "Location not found");
     }
 
-    const API_KEY = "eebc3d7adb97cc6343c734f635643a6e"; // temporary
+    const currentData = await currentRes.json();
+    console.log("✅ Current weather data received:", currentData.name);
+
+    // --- 2. Forecast from OpenWeather (direct call) ---
+    const API_KEY = "eebc3d7adb97cc6343c734f635643a6e";
+
+    // Build forecast query
+    let forecastQuery;
+    if (/^\d{6}$/.test(cityOrPin)) {
+      forecastQuery = `zip=${cityOrPin},in`;
+    } else {
+      forecastQuery = `q=${encodeURIComponent(cityOrPin)}`;
+    }
+
+    console.log("🔍 Fetching 5-day forecast...");
     const forecastRes = await fetch(
-      `https://api.openweathermap.org/data/2.5/forecast?${query}&appid=${API_KEY}&units=metric`
+      `https://api.openweathermap.org/data/2.5/forecast?${forecastQuery}&appid=${API_KEY}&units=metric`
     );
-    if (!forecastRes.ok) throw new Error("Forecast not found");
+
+    if (!forecastRes.ok) {
+      throw new Error("Forecast not available");
+    }
 
     const forecastData = await forecastRes.json();
+    console.log("✅ Forecast data received");
 
-    // rain chance next 12h
-    const rainChance = Math.round(
-      (forecastData.list.slice(0, 4).filter((i) => i.rain && i.rain["3h"] > 0)
-        .length /
-        4) *
-        100
-    );
+    // Calculate rain chance for next 12 hours (4 data points, 3h each)
+    const rainChance = calculateRainChance(forecastData.list.slice(0, 4));
 
+    // Update UI with all data
     updateUI(currentData, forecastData.list, rainChance);
 
+    // Hide loading, show weather info
     loadingSpinner.classList.add("hidden");
     weatherInfo.classList.remove("hidden");
-    if (infoCards) infoCards.classList.add("hidden");
   } catch (err) {
+    console.error("❌ Error fetching weather:", err);
     loadingSpinner.classList.add("hidden");
     errorMessage.classList.remove("hidden");
-    document.getElementById("errorText").textContent =
-      "City or PINCODE invalid. Please try again.";
-    console.error(err);
+
+    if (
+      err.message.includes("Failed to fetch") ||
+      err.message.includes("NetworkError")
+    ) {
+      errorText.textContent =
+        "Cannot connect to server. Make sure the backend is running on http://localhost:5000";
+    } else {
+      errorText.textContent =
+        err.message || "City or PINCODE invalid. Please try again.";
+    }
   }
+}
+
+/* -----------------------
+   Calculate Rain Chance
+   ----------------------- */
+function calculateRainChance(forecastList) {
+  const rainyPeriods = forecastList.filter(
+    (item) => item.rain && item.rain["3h"] > 0
+  ).length;
+  return Math.round((rainyPeriods / forecastList.length) * 100);
 }
 
 /* -----------------------
    Update UI
    ----------------------- */
 function updateUI(current, forecast, rainChance) {
+  console.log("🎨 Updating UI...");
+
   const temp = current.main.temp;
   const hum = current.main.humidity;
   const wind = current.wind.speed;
 
+  // City and Date
   document.getElementById(
     "cityName"
   ).textContent = `${current.name}, ${current.sys.country}`;
-
   document.getElementById("currentDate").textContent =
     new Date().toLocaleString("en-US", {
       weekday: "long",
@@ -149,11 +183,14 @@ function updateUI(current, forecast, rainChance) {
       minute: "2-digit",
     });
 
+  // Temperature and Weather
   document.getElementById("temperature").textContent = Math.round(temp) + "°C";
   document.getElementById("feelsLike").textContent =
     "Feels like " + Math.round(current.main.feels_like) + "°C";
   document.getElementById("weatherCondition").textContent =
     current.weather[0].main;
+
+  // Metrics
   document.getElementById("humidity").textContent = hum + "%";
   document.getElementById("windSpeed").textContent = wind.toFixed(1) + " m/s";
   document.getElementById("pressure").textContent =
@@ -161,50 +198,52 @@ function updateUI(current, forecast, rainChance) {
   document.getElementById("visibility").textContent =
     (current.visibility / 1000).toFixed(1) + " km";
   document.getElementById("cloudCover").textContent = current.clouds.all + "%";
-  document.getElementById("rainChance").textContent =
-    (typeof rainChance === "number" ? rainChance : 0) + "%";
+  document.getElementById("rainChance").textContent = rainChance + "%";
 
+  // Generate dynamic content
   generateAdvice(current, forecast);
   generateCautions(current, forecast, rainChance);
   generateChart(forecast);
   generate5DayForecast(forecast);
+
+  console.log("✅ UI updated successfully");
 }
 
 /* -----------------------
-   Advice
+   Crop-Specific Advice
    ----------------------- */
 function generateAdvice(current, forecast) {
   const advice = [];
-
-  const crop = document.getElementById("cropSelector")
-    ? document.getElementById("cropSelector").value
-    : "";
+  const crop = document.getElementById("cropSelector")?.value || "";
 
   if (crop && cropTips[crop]) {
-    advice.push(crop);
-    cropTips[crop].forEach((t) => advice.push("• " + t));
+    advice.push(`<strong>${crop}</strong>`);
+    cropTips[crop].forEach((tip) => advice.push(tip));
   }
 
   const ul = document.getElementById("adviceList");
   ul.innerHTML = "";
 
   if (advice.length === 0) {
-    ul.innerHTML =
-      "<li class='flex gap-3 bg-green-50 p-4 rounded-lg border border-green-200'><span class='text-green-600 font-bold'>✓</span><span class='text-gray-700'>No specific advice right now.</span></li>";
+    ul.innerHTML = `
+      <li class='flex gap-3 bg-green-50 p-4 rounded-lg border border-green-200'>
+        <span class='text-green-600 font-bold'>✓</span>
+        <span class='text-gray-700'>Select a crop above to get specific farming advice.</span>
+      </li>`;
     return;
   }
 
-  advice.forEach((a) => {
+  advice.forEach((item) => {
     const li = document.createElement("li");
     li.className =
       "flex gap-3 bg-green-50 p-4 rounded-lg border border-green-200";
-    li.innerHTML = `<span class="text-green-600 font-bold">•</span><span class="text-gray-700">${a}</span>`;
+    li.innerHTML = `<span class="text-green-600 font-bold">•</span><span class="text-gray-700">${item}</span>`;
     ul.appendChild(li);
   });
 }
 
 /* -----------------------
-   Cautions
+   Weather Cautions/Alerts
    ----------------------- */
 function generateCautions(current, forecast, rainChance) {
   const cautions = [];
@@ -212,44 +251,45 @@ function generateCautions(current, forecast, rainChance) {
   const hum = current.main.humidity;
   const wind = current.wind.speed;
 
-  if (temp > 37)
-    cautions.push("⚠️ Heatwave risk — Extra watering recommended.");
-  if (temp < 5) cautions.push("⚠️ Frost conditions — Protect young plants.");
-  if (hum > 85) cautions.push("⚠️ Very high humidity — Fungal disease risk.");
+  if (temp > 37) cautions.push("Heatwave risk — Extra watering recommended.");
+  if (temp < 5) cautions.push("Frost conditions — Protect young plants.");
+  if (hum > 85) cautions.push("Very high humidity — Fungal disease risk.");
   if (rainChance > 50)
-    cautions.push("⚠️ Heavy rainfall expected — Secure stored crops.");
-  if (wind > 10) cautions.push("⚠️ High winds — Avoid spraying today.");
+    cautions.push("Heavy rainfall expected — Secure stored crops.");
+  if (wind > 10) cautions.push("High winds — Avoid spraying pesticides today.");
 
   const ul = document.getElementById("cautionList");
   ul.innerHTML = "";
 
   if (cautions.length === 0) {
-    ul.innerHTML =
-      "<li class='p-4 bg-green-50 rounded-lg border text-green-700'>No major risks today.</li>";
+    ul.innerHTML = `
+      <li class='p-4 bg-green-50 rounded-lg border border-green-200'>
+        <span class='text-green-700 font-semibold'>✓ No major weather risks detected today.</span>
+      </li>`;
     return;
   }
 
-  cautions.forEach((c) => {
+  cautions.forEach((caution) => {
     const li = document.createElement("li");
     li.className = "flex gap-3 bg-red-50 p-4 rounded-lg border border-red-300";
-    li.innerHTML = `<span class="text-red-600 font-bold">⚠</span><span class="text-gray-700">${c}</span>`;
+    li.innerHTML = `<span class="text-red-600 font-bold text-xl">⚠</span><span class="text-gray-700">${caution}</span>`;
     ul.appendChild(li);
   });
 }
 
 /* -----------------------
-   Chart
+   Temperature Chart (12h)
    ----------------------- */
 function generateChart(forecast) {
   const next12h = forecast.slice(0, 4);
-  const labels = next12h.map((i) =>
-    new Date(i.dt * 1000).toLocaleTimeString([], {
+  const labels = next12h.map((item) =>
+    new Date(item.dt * 1000).toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
     })
   );
-  const temps = next12h.map((i) => i.main.temp);
-  const humidity = next12h.map((i) => i.main.humidity);
+  const temps = next12h.map((item) => item.main.temp);
+  const humidity = next12h.map((item) => item.main.humidity);
 
   const ctx = document.getElementById("tempChart").getContext("2d");
   if (tempChart) tempChart.destroy();
@@ -314,7 +354,9 @@ function generateChart(forecast) {
    ----------------------- */
 function generate5DayForecast(forecast) {
   const daily = [];
-  for (let i = 0; i < forecast.length; i += 8) daily.push(forecast[i]);
+  for (let i = 0; i < forecast.length; i += 8) {
+    daily.push(forecast[i]);
+  }
 
   const grid = document.getElementById("forecastGrid");
   grid.innerHTML = "";
@@ -329,20 +371,20 @@ function generate5DayForecast(forecast) {
       Thunderstorm: "⛈️",
       Snow: "❄️",
       Mist: "🌫️",
+      Haze: "🌫️",
     };
     const icon = icons[day.weather[0].main] || "🌤️";
 
     const card = document.createElement("div");
     card.className =
-      "bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 text-center border border-blue-200";
+      "bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 text-center border border-blue-200 hover:shadow-md transition";
     card.innerHTML = `
-      <p class="text-sm font-bold text-gray-700 mb-2">${date.toLocaleDateString(
-        "en-US",
-        { month: "short", day: "numeric" }
-      )}</p>
-      <div class="text-3xl mb-2">${icon}</div>
+      <p class="text-sm font-bold text-gray-700 mb-2">
+        ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+      </p>
+      <div class="text-4xl mb-2">${icon}</div>
       <p class="text-xs text-gray-600 mb-2 capitalize">${
-        day.weather[0].main
+        day.weather[0].description
       }</p>
       <div class="flex justify-center gap-2 text-sm">
         <span class="font-bold text-gray-800">${Math.round(
@@ -354,3 +396,5 @@ function generate5DayForecast(forecast) {
     grid.appendChild(card);
   });
 }
+
+// Log when s
