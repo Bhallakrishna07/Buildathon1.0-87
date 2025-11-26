@@ -1,37 +1,30 @@
-import fetch from "node-fetch"; // needed for OpenWeather
-import { Configuration, OpenAIApi } from "openai";
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
 
-const openai = new OpenAIApi(
-  new Configuration({
-    apiKey: process.env.OPENAI_KEY,
-  })
-);
+const weatherRoutes = require("./routes/weatherRoutes");
 
-app.get("/api/weather", async (req, res) => {
-  const { location } = req.query;
+const app = express();
 
-  if (!location) return res.status(400).json({ error: "Location required" });
+app.use(cors());
+app.use(express.json());
 
-  try {
-    const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(
-      location
-    )}&units=metric&appid=${process.env.OPENWEATHER_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
+// Logging middleware to debug requests
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`);
+  next();
+});
 
-    if (data.cod !== 200) return res.status(400).json({ error: data.message });
+// Routes
+app.use("/api/weather", weatherRoutes);
 
-    const weather = {
-      location: data.name,
-      temperature: data.main.temp,
-      humidity: data.main.humidity,
-      condition: data.weather[0].main,
-      alerts: "No major risks ✅", // optional: you can integrate weather alerts API later
-    };
+// Test route
+app.get("/", (req, res) => {
+  res.json({ message: "AgroAlert API is running" });
+});
 
-    res.json(weather);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch weather" });
-  }
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
