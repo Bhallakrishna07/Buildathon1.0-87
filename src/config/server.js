@@ -1,30 +1,38 @@
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
+import express from "express";
+import cors from "cors";
+import https from "https";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+import weatherRoutes from "./routes/weatherRoutes.js";
 
-const weatherRoutes = require("./routes/weatherRoutes");
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
+// Middleware
 app.use(cors());
 app.use(express.json());
-
-// Logging middleware to debug requests
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
-  next();
-});
 
 // Routes
 app.use("/api/weather", weatherRoutes);
 
-// Test route
+// Health check
 app.get("/", (req, res) => {
-  res.json({ message: "AgroAlert API is running" });
+  res.json({ message: "Weather API Server Running" });
 });
 
-const PORT = process.env.PORT || 5000;
+// HTTPS Setup
+const httpsOptions = {
+  key: fs.readFileSync(path.join(__dirname, "../../certs/key.pem")),
+  cert: fs.readFileSync(path.join(__dirname, "../../certs/cert.pem")),
+};
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+https.createServer(httpsOptions, app).listen(PORT, () => {
+  console.log(`✅ HTTPS Server running on https://localhost:${PORT}`);
 });

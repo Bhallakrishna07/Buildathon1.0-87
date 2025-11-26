@@ -1,8 +1,9 @@
-const express = require("express");
+import express from "express";
+import * as weatherController from "../controller/weatherController.js";
+
 const router = express.Router();
 
-const { getWeatherData } = require("../controllers/weatherController");
+// Get weather by city name or pincode
+router.get("/:location", weatherController.getWeather);
 
-router.get("/:city", getWeatherData);
-
-module.exports = router;
+export default router;
