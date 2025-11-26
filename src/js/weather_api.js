@@ -1,9 +1,7 @@
 // ================================
 // CONFIG
 // ================================
-const BACKEND_URL = "https://agroalert-backend.onrender.com";
-// NOTE: Forecast still uses OpenWeather directly.
-// Move forecast to backend later if you want to hide API key.
+const BACKEND_URL = "eebc3d7adb97cc6343c734f635643a6e";
 
 let tempChart = null;
 
